@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  mc-qq-bridge:
+    build: ./backend
+    container_name: mc-qq-bridge
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    environment:
+      # FastAPI 服务配置
+      - HOST=0.0.0.0
+      - PORT=8765
+      - API_TOKEN=${API_TOKEN:-your-secret-token}
+      
+      # NapCat WebSocket 配置
+      - NAPCAT_WS_URL=${NAPCAT_WS_URL:-ws://host.docker.internal:3001}
+      - NAPCAT_ACCESS_TOKEN=${NAPCAT_ACCESS_TOKEN:-}
+      
+      # QQ 群配置
+      - QQ_GROUP_ID=${QQ_GROUP_ID:-123456789}
+      
+      # OpenAI API 配置 (图片)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
+      
+      # 视频处理配置 (可选)
+      - VIDEO_API_KEY=${VIDEO_API_KEY:-}
+      - VIDEO_BASE_URL=${VIDEO_BASE_URL:-}
+      - VIDEO_MODEL=${VIDEO_MODEL:-}
+      - VIDEO_MAX_SIZE_MB=${VIDEO_MAX_SIZE_MB:-20}
+      - VIDEO_SUPPORTED_FORMATS=${VIDEO_SUPPORTED_FORMATS:-mp4,webm,mov,avi}
+      
+      # 日志级别
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - mc-qq-network
+
+networks:
+  mc-qq-network:
+    driver: bridge

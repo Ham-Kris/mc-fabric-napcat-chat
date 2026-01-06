@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "mc-qq-chat",
+  "version": "${version}",
+  "name": "MC-QQ Chat Bridge",
+  "description": "Synchronize chat messages between Minecraft and QQ groups via NapCat",
+  "authors": ["CodeSphere"],
+  "contact": {
+    "homepage": "https://github.com/CodeSphere/mc-qq-chat",
+    "sources": "https://github.com/CodeSphere/mc-qq-chat"
+  },
+  "license": "MIT",
+  "environment": "server",
+  "entrypoints": {
+    "server": ["com.mcqqchat.McQqChat"]
+  },
+  "mixins": [],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
