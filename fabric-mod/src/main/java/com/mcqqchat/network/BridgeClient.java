@@ -6,6 +6,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mcqqchat.McQqChat;
 import com.mcqqchat.config.ModConfig;
+import net.minecraft.server.MinecraftServer;
 
 import java.io.IOException;
 import java.net.URI;
@@ -28,6 +29,7 @@ public class BridgeClient {
         this.config = config;
         this.gson = new Gson();
         this.httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)  // 强制使用 HTTP/1.1
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
     }
@@ -44,6 +46,9 @@ public class BridgeClient {
 
         // 定期轮询消息
         scheduler.scheduleAtFixedRate(this::pollMessages, 1000, config.pollInterval, TimeUnit.MILLISECONDS);
+        
+        // 定期更新玩家列表（每5秒）
+        scheduler.scheduleAtFixedRate(this::updatePlayerList, 2000, 5000, TimeUnit.MILLISECONDS);
 
         McQqChat.LOGGER.info("Bridge client started, polling every {}ms", config.pollInterval);
     }
@@ -179,6 +184,45 @@ public class BridgeClient {
                 McQqChat.LOGGER.debug("Send failed: {}", e.getMessage());
             }
         });
+    }
+    
+    private void updatePlayerList() {
+        if (!running) return;
+        
+        try {
+            MinecraftServer server = McQqChat.getServer();
+            if (server == null) return;
+            
+            // 获取在线玩家列表
+            JsonObject data = new JsonObject();
+            JsonArray players = new JsonArray();
+            
+            server.getPlayerManager().getPlayerList().forEach(player -> {
+                players.add(player.getName().getString());
+            });
+            
+            data.add("players", players);
+            data.addProperty("max_players", server.getMaxPlayerCount());
+            
+            // 发送到后端
+            scheduler.submit(() -> {
+                try {
+                    HttpRequest request = HttpRequest.newBuilder()
+                            .uri(URI.create(config.backendUrl + "/api/players/update"))
+                            .header("Authorization", "Bearer " + config.backendToken)
+                            .header("Content-Type", "application/json")
+                            .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(data)))
+                            .timeout(Duration.ofSeconds(5))
+                            .build();
+
+                    httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                } catch (IOException | InterruptedException e) {
+                    McQqChat.LOGGER.debug("Update player list failed: {}", e.getMessage());
+                }
+            });
+        } catch (Exception e) {
+            McQqChat.LOGGER.debug("Error updating player list: {}", e.getMessage());
+        }
     }
 }
 

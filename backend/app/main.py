@@ -5,6 +5,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Request
+import json
 
 from app.config import settings
 from app.routes import router
@@ -59,6 +61,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 添加请求日志中间件
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    if request.url.path == "/api/messages/send" and request.method == "POST":
+        body = await request.body()
+        headers = dict(request.headers)
+        logger.info(f"Raw POST body: {body}, headers: {headers}")
+        # 重新创建request以便后续使用
+        async def receive():
+            return {"type": "http.request", "body": body}
+        request = Request(request.scope, receive)
+    response = await call_next(request)
+    return response
 
 # 注册路由
 app.include_router(router)

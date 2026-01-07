@@ -37,3 +37,9 @@ class HealthCheck(BaseModel):
     napcat_connected: bool
     timestamp: datetime
 
+
+class PlayerListUpdate(BaseModel):
+    """玩家列表更新"""
+    players: List[str]
+    max_players: int = 20
+

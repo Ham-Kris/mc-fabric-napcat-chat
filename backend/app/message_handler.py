@@ -1,5 +1,6 @@
 import logging
 from typing import Optional
+import httpx
 
 from app.config import settings
 from app.models import QqMessage
@@ -43,16 +44,37 @@ class MessageHandler:
     async def _process_message_segments(self, segments: list, nickname: str, qq: str):
         """处理消息段"""
         text_parts = []
+        has_at_bot = False  # 是否@了机器人
+        
+        logger.info(f"Processing message from {nickname}({qq}), segments: {len(segments)}")
         
         for segment in segments:
             seg_type = segment.get("type")
             seg_data = segment.get("data", {})
+            
+            logger.debug(f"Segment type: {seg_type}, data: {seg_data}")
 
             if seg_type == "text":
                 # 纯文本
                 text = seg_data.get("text", "").strip()
                 if text:
                     text_parts.append(text)
+                    
+            elif seg_type == "at":
+                # @某人
+                at_qq = seg_data.get("qq", "")
+                at_name = seg_data.get("name", "")
+                
+                logger.info(f"Found @mention: qq={at_qq}, name={at_name}")
+                
+                # 检查是否@了机器人（任何@都视为可能的命令）
+                if at_qq and at_qq != "all":
+                    has_at_bot = True
+                    
+                if at_qq == "all":
+                    text_parts.append("@全体成员")
+                else:
+                    text_parts.append(f"@{at_name or at_qq}")
 
             elif seg_type == "image":
                 # 图片
@@ -177,6 +199,14 @@ class MessageHandler:
         # 合并所有文本部分
         if text_parts:
             combined_text = " ".join(text_parts)
+            
+            logger.info(f"Combined text: '{combined_text}', has_at_bot: {has_at_bot}")
+            
+            # 检查是否是命令
+            if has_at_bot and await self._handle_command(combined_text, nickname):
+                logger.info("Command handled, not forwarding to MC")
+                return  # 命令已处理，不转发到MC
+            
             msg = QqMessage(
                 type="chat",
                 nickname=nickname,
@@ -184,6 +214,64 @@ class MessageHandler:
                 content=combined_text
             )
             await message_queue.push(msg)
+            
+    async def _handle_command(self, text: str, nickname: str) -> bool:
+        """处理命令，返回True表示已处理"""
+        # 清理文本，移除@标记和QQ号
+        import re
+        # 移除 @数字 模式
+        text = re.sub(r'@?\d+', '', text).strip()
+        
+        logger.info(f"Checking command after cleanup: '{text}'")
+        
+        # list命令：显示在线玩家
+        if text.lower() in ["list", "列表", "在线", "玩家列表", ""]:  # 空字符串表示只@了机器人
+            if text.lower() == "" or text.lower() in ["list", "列表", "在线", "玩家列表"]:
+                logger.info(f"List command triggered by {nickname}")
+                await self._handle_list_command()
+                return True
+        
+        # 如果文本包含这些关键词
+        text_lower = text.lower()
+        if any(cmd in text_lower for cmd in ["list", "列表", "在线", "玩家"]):
+            logger.info(f"List command triggered by {nickname} (keyword match)")
+            await self._handle_list_command()
+            return True
+            
+        return False
+    
+    async def _handle_list_command(self):
+        """处理list命令 - 查询在线玩家"""
+        try:
+            # 调用MC服务器API
+            mc_backend_url = "http://localhost:8765"
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(
+                    f"{mc_backend_url}/api/players",
+                    headers={"Authorization": f"Bearer {settings.api_token}"}
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    online_count = data.get("online_count", 0)
+                    max_players = data.get("max_players", 0)
+                    players = data.get("players", [])
+                    
+                    if online_count == 0:
+                        message = "📊 当前服务器无人在线"
+                    else:
+                        player_list = "\n".join([f"  • {p}" for p in players])
+                        message = f"📊 在线玩家 ({online_count}/{max_players}):\n{player_list}"
+                    
+                    await napcat_client.send_group_message(settings.qq_group_id, message)
+                    logger.info(f"Sent player list to QQ: {online_count} players")
+                else:
+                    logger.error(f"Failed to get player list: {response.status_code}")
+                    await napcat_client.send_group_message(settings.qq_group_id, "❌ 查询失败，服务器可能未响应")
+                    
+        except Exception as e:
+            logger.error(f"Error handling list command: {e}")
+            await napcat_client.send_group_message(settings.qq_group_id, f"❌ 查询出错: {str(e)}")
 
     def _get_face_name(self, face_id: str) -> str:
         """获取 QQ 表情名称"""

@@ -3,7 +3,7 @@ package com.mcqqchat;
 import com.mcqqchat.config.ModConfig;
 import com.mcqqchat.network.BridgeClient;
 import com.mcqqchat.handler.ChatHandler;
-import net.fabricmc.api.DedicatedServerModInitializer;
+import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -13,7 +13,7 @@ import net.minecraft.text.Text;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class McQqChat implements DedicatedServerModInitializer {
+public class McQqChat implements ModInitializer {
     public static final String MOD_ID = "mc-qq-chat";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
@@ -22,7 +22,7 @@ public class McQqChat implements DedicatedServerModInitializer {
     private static ModConfig config;
 
     @Override
-    public void onInitializeServer() {
+    public void onInitialize() {
         LOGGER.info("MC-QQ Chat Bridge initializing...");
 
         // 加载配置
@@ -35,7 +35,15 @@ public class McQqChat implements DedicatedServerModInitializer {
         ServerLifecycleEvents.SERVER_STARTED.register(s -> {
             server = s;
             bridgeClient.start();
-            bridgeClient.sendSystemMessage("🎮 Minecraft 服务器已启动！");
+            // 延迟发送启动消息，确保 bridge 完全初始化
+            new Thread(() -> {
+                try {
+                    Thread.sleep(2000); // 等待2秒
+                    bridgeClient.sendSystemMessage("🎮 Minecraft 服务器已启动！");
+                } catch (InterruptedException e) {
+                    LOGGER.error("Failed to send startup message", e);
+                }
+            }).start();
             LOGGER.info("MC-QQ Chat Bridge started!");
         });
 
@@ -57,14 +65,14 @@ public class McQqChat implements DedicatedServerModInitializer {
         ServerPlayConnectionEvents.JOIN.register((handler, sender, s) -> {
             ServerPlayerEntity player = handler.getPlayer();
             String playerName = player.getName().getString();
-            bridgeClient.sendSystemMessage("📥 " + playerName + " 加入了服务器");
+            bridgeClient.sendPlayerEvent("player_join", playerName);
         });
 
         // 玩家离开事件
         ServerPlayConnectionEvents.DISCONNECT.register((handler, s) -> {
             ServerPlayerEntity player = handler.getPlayer();
             String playerName = player.getName().getString();
-            bridgeClient.sendSystemMessage("📤 " + playerName + " 离开了服务器");
+            bridgeClient.sendPlayerEvent("player_leave", playerName);
         });
 
         LOGGER.info("MC-QQ Chat Bridge initialized!");
