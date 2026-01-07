@@ -12,7 +12,7 @@
   "license": "MIT",
   "environment": "server",
   "entrypoints": {
-    "server": ["com.mcqqchat.McQqChat"]
+    "main": ["com.mcqqchat.McQqChat"]
   },
   "mixins": [],
   "depends": {

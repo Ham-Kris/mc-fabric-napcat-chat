@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from typing import Optional
 
 from app.config import settings
-from app.models import McMessage, MessageQueue, SendResponse, HealthCheck, QqMessage
+from app.models import McMessage, MessageQueue, SendResponse, HealthCheck, QqMessage, PlayerListUpdate
 from app.message_queue import message_queue
 from app.message_handler import message_handler
 from app.napcat_client import napcat_client
@@ -49,6 +49,7 @@ async def poll_messages():
 @router.post("/messages/send", response_model=SendResponse, dependencies=[Depends(verify_token)])
 async def send_message(msg: McMessage):
     """发送消息到 QQ 群（供 MC mod 调用）"""
+    logger.info(f"Received message: type={msg.type}, player={msg.player}, message={msg.message}")
     try:
         if msg.type == "player_chat":
             if msg.player and msg.message:
@@ -110,4 +111,19 @@ async def get_status(token: str = Depends(verify_token)):
         "queue_size": await message_queue.size(),
         "group_id": settings.qq_group_id
     }
+
+
+@router.get("/players")
+async def get_players(token: str = Depends(verify_token)):
+    """获取在线玩家列表（由MC服务器提供数据）"""
+    from app.player_cache import player_cache
+    return player_cache.get_players()
+
+
+@router.post("/players/update", dependencies=[Depends(verify_token)])
+async def update_players(data: PlayerListUpdate):
+    """更新在线玩家列表（MC mod调用）"""
+    from app.player_cache import player_cache
+    await player_cache.update(data.players, data.max_players)
+    return {"success": True}
 
