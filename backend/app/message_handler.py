@@ -247,7 +247,7 @@ class MessageHandler:
             mc_backend_url = "http://localhost:8765"
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(
-                    f"{mc_backend_url}/api/players/list",
+                    f"{mc_backend_url}/api/players",
                     headers={"Authorization": f"Bearer {settings.api_token}"}
                 )
                 
@@ -263,15 +263,28 @@ class MessageHandler:
                         player_list = "\n".join([f"  • {p}" for p in players])
                         message = f"📊 在线玩家 ({online_count}/{max_players}):\n{player_list}"
                     
-                    await napcat_client.send_group_message(settings.qq_group_id, message)
-                    logger.info(f"Sent player list to QQ: {online_count} players")
+                    # 发送消息，忽略发送过程中的超时等错误（消息可能已经发出）
+                    try:
+                        await napcat_client.send_group_message(settings.qq_group_id, message)
+                        logger.info(f"Sent player list to QQ: {online_count} players")
+                    except Exception as send_err:
+                        logger.warning(f"Send message may have timed out (message might still be sent): {send_err}")
                 else:
                     logger.error(f"Failed to get player list: {response.status_code}")
-                    await napcat_client.send_group_message(settings.qq_group_id, "❌ 查询失败，服务器可能未响应")
+                    try:
+                        await napcat_client.send_group_message(settings.qq_group_id, "❌ 查询失败，服务器可能未响应")
+                    except Exception:
+                        pass
                     
+        except httpx.RequestError as e:
+            logger.error(f"HTTP request error: {e}")
+            try:
+                await napcat_client.send_group_message(settings.qq_group_id, f"❌ 查询出错: 无法连接到服务器")
+            except Exception:
+                pass
         except Exception as e:
             logger.error(f"Error handling list command: {e}")
-            await napcat_client.send_group_message(settings.qq_group_id, f"❌ 查询出错: {str(e)}")
+            # 不再尝试发送错误消息，因为可能是连接问题导致的
 
     def _get_face_name(self, face_id: str) -> str:
         """获取 QQ 表情名称"""
