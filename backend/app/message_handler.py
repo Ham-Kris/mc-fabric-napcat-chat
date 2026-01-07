@@ -247,7 +247,7 @@ class MessageHandler:
             mc_backend_url = "http://localhost:8765"
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(
-                    f"{mc_backend_url}/api/players",
+                    f"{mc_backend_url}/api/players/list",
                     headers={"Authorization": f"Bearer {settings.api_token}"}
                 )
                 
