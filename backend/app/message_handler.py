@@ -219,17 +219,20 @@ class MessageHandler:
         """处理命令，返回True表示已处理"""
         # 清理文本，移除@标记和QQ号
         import re
-        # 移除 @数字 模式
-        text = re.sub(r'@?\d+', '', text).strip()
+        # 移除 @xxx 模式（@后面跟任意非空白字符）
+        text = re.sub(r'@\S+', '', text).strip()
         
         logger.info(f"Checking command after cleanup: '{text}'")
         
-        # list命令：显示在线玩家
-        if text.lower() in ["list", "列表", "在线", "玩家列表", ""]:  # 空字符串表示只@了机器人
-            if text.lower() == "" or text.lower() in ["list", "列表", "在线", "玩家列表"]:
-                logger.info(f"List command triggered by {nickname}")
-                await self._handle_list_command()
-                return True
+        # 如果清理后是空字符串，说明只@了机器人，没有实际命令
+        if not text:
+            return False
+        
+        # list命令：显示在线玩家（精确匹配）
+        if text.lower() in ["list", "列表", "在线", "玩家列表"]:
+            logger.info(f"List command triggered by {nickname}")
+            await self._handle_list_command()
+            return True
         
         # 如果文本包含这些关键词
         text_lower = text.lower()
