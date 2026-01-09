@@ -4,10 +4,10 @@
   "version": "${version}",
   "name": "MC-QQ Chat Bridge",
   "description": "Synchronize chat messages between Minecraft and QQ groups via NapCat",
-  "authors": ["CodeSphere"],
+  "authors": ["Ham-Kris"],
   "contact": {
-    "homepage": "https://github.com/CodeSphere/mc-qq-chat",
-    "sources": "https://github.com/CodeSphere/mc-qq-chat"
+    "homepage": "https://github.com/Ham-Kris/mc-fabric-napcat-chat",
+    "sources": "https://github.com/Ham-Kris/mc-fabric-napcat-chat"
   },
   "license": "MIT",
   "environment": "server",

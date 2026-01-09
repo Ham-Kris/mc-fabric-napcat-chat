@@ -67,14 +67,14 @@ async def send_message(msg: McMessage):
 
         elif msg.type == "player_join":
             if msg.player:
-                await message_handler.send_system_to_qq(f"📥 {msg.player} 加入了 Minecraft 服务器")
+                await message_handler.send_system_to_qq(f"📥 {msg.player} 加入了服务器")
                 return SendResponse(success=True, message="Join event sent")
             else:
                 raise HTTPException(status_code=400, detail="Missing player")
 
         elif msg.type == "player_leave":
             if msg.player:
-                await message_handler.send_system_to_qq(f"📤 {msg.player} 离开了 Minecraft 服务器")
+                await message_handler.send_system_to_qq(f"📤 {msg.player} 离开了服务器")
                 return SendResponse(success=True, message="Leave event sent")
             else:
                 raise HTTPException(status_code=400, detail="Missing player")
