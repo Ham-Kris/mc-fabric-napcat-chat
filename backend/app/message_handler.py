@@ -311,9 +311,10 @@ class MessageHandler:
                 # 获取进程信息
                 info_cmd = """
                 PID=$(pgrep -f "fabric-server-launch.jar" | head -1)
+                CORES=$(nproc)
                 if [ -n "$PID" ]; then
                     MEM=$(ps -p $PID -o rss= 2>/dev/null | awk '{printf "%.1f", $1/1024/1024}')
-                    CPU=$(ps -p $PID -o %cpu= 2>/dev/null | xargs)
+                    CPU=$(ps -p $PID -o %cpu= 2>/dev/null | awk -v cores="$CORES" '{printf "%.1f", $1/cores}')
                     UPTIME=$(ps -p $PID -o etime= 2>/dev/null | xargs)
                     echo "$MEM|$CPU|$UPTIME"
                 else
