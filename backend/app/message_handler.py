@@ -228,17 +228,18 @@ class MessageHandler:
         if not text:
             return False
         
-        # list命令：显示在线玩家（精确匹配）
-        if text.lower() in ["list", "列表", "在线", "玩家列表"]:
+        text_lower = text.lower()
+        
+        # list命令：显示在线玩家
+        if text_lower in ["list", "列表", "在线", "玩家列表"] or any(cmd in text_lower for cmd in ["list", "列表", "玩家"]):
             logger.info(f"List command triggered by {nickname}")
             await self._handle_list_command()
             return True
         
-        # 如果文本包含这些关键词
-        text_lower = text.lower()
-        if any(cmd in text_lower for cmd in ["list", "列表", "在线", "玩家"]):
-            logger.info(f"List command triggered by {nickname} (keyword match)")
-            await self._handle_list_command()
+        # status命令：显示服务器状态
+        if text_lower in ["status", "状态", "服务器状态", "服务器"]:
+            logger.info(f"Status command triggered by {nickname}")
+            await self._handle_status_command()
             return True
             
         return False
@@ -288,6 +289,63 @@ class MessageHandler:
         except Exception as e:
             logger.error(f"Error handling list command: {e}")
             # 不再尝试发送错误消息，因为可能是连接问题导致的
+
+    async def _handle_status_command(self):
+        """处理status命令 - 查询服务器运行状态"""
+        import asyncio
+        
+        try:
+            # 检查 minecraft 服务状态
+            check_cmd = "systemctl is-active --quiet minecraft && echo 'running' || echo 'stopped'"
+            proc = await asyncio.create_subprocess_shell(
+                check_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await proc.communicate()
+            is_running = stdout.decode().strip() == 'running'
+            
+            if not is_running:
+                message = "🔴 服务器状态: 已停止"
+            else:
+                # 获取进程信息
+                info_cmd = """
+                PID=$(pgrep -f "fabric-server-launch.jar" | head -1)
+                if [ -n "$PID" ]; then
+                    MEM=$(ps -p $PID -o rss= 2>/dev/null | awk '{printf "%.1f", $1/1024/1024}')
+                    CPU=$(ps -p $PID -o %cpu= 2>/dev/null | xargs)
+                    UPTIME=$(ps -p $PID -o etime= 2>/dev/null | xargs)
+                    echo "$MEM|$CPU|$UPTIME"
+                else
+                    echo "|||"
+                fi
+                """
+                proc = await asyncio.create_subprocess_shell(
+                    info_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, _ = await proc.communicate()
+                result = stdout.decode().strip()
+                
+                parts = result.split('|')
+                mem = parts[0] if len(parts) > 0 and parts[0] else "N/A"
+                cpu = parts[1] if len(parts) > 1 and parts[1] else "N/A"
+                uptime = parts[2] if len(parts) > 2 and parts[2] else "N/A"
+                
+                message = f"""🟢 服务器状态: 运行中
+💾 内存占用: {mem}G
+⚡ CPU 使用: {cpu}%
+⏱️ 运行时间: {uptime}"""
+            
+            try:
+                await napcat_client.send_group_message(settings.qq_group_id, message)
+                logger.info(f"Sent server status to QQ")
+            except Exception as send_err:
+                logger.warning(f"Send message may have timed out: {send_err}")
+                
+        except Exception as e:
+            logger.error(f"Error handling status command: {e}")
 
     def _get_face_name(self, face_id: str) -> str:
         """获取 QQ 表情名称"""
