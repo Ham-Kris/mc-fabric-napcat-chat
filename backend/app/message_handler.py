@@ -242,44 +242,44 @@ class MessageHandler:
         # ===== 普通用户命令 =====
         
         # list命令：显示在线玩家
-        if text_lower in ["list", "列表", "在线", "玩家列表"] or any(cmd in text_lower for cmd in ["list", "列表", "玩家"]):
+        if text_lower in ["list"]:
             logger.info(f"List command triggered by {nickname}")
             await self._handle_list_command()
             return True
         
         # status命令：显示服务器状态
-        if text_lower in ["status", "状态", "服务器状态"]:
+        if text_lower in ["status"]:
             logger.info(f"Status command triggered by {nickname}")
             await self._handle_status_command()
             return True
         
         # help命令：显示帮助
-        if text_lower in ["help", "帮助", "命令"]:
+        if text_lower in ["help"]:
             await self._handle_help_command(is_admin)
             return True
         
         # ===== 管理员命令 =====
         if is_admin:
             # 重启服务器
-            if text_lower in ["restart", "重启", "重启服务器"]:
+            if text_lower in ["restart"]:
                 logger.info(f"Admin {nickname}({qq}) triggered restart")
                 await self._handle_admin_restart()
                 return True
             
             # 启动服务器
-            if text_lower in ["start", "启动", "启动服务器", "开服"]:
+            if text_lower in ["start"]:
                 logger.info(f"Admin {nickname}({qq}) triggered start")
                 await self._handle_admin_start()
                 return True
             
             # 关闭服务器
-            if text_lower in ["stop", "关闭", "关闭服务器", "关服"]:
+            if text_lower in ["stop"]:
                 logger.info(f"Admin {nickname}({qq}) triggered stop")
                 await self._handle_admin_stop()
                 return True
             
             # 执行游戏内命令
-            if text_lower.startswith("cmd ") or text_lower.startswith("命令 ") or text_lower.startswith("/"):
+            if text_lower.startswith("cmd "):
                 # 提取命令内容
                 if text_lower.startswith("/"):
                     game_cmd = text[1:]  # 移除开头的 /
@@ -406,18 +406,18 @@ class MessageHandler:
     async def _handle_help_command(self, is_admin: bool):
         """显示帮助信息"""
         help_msg = """📖 可用命令:
-  • list / 列表 / 在线 - 查看在线玩家
-  • status / 状态 - 查看服务器状态
-  • help / 帮助 - 显示此帮助"""
+  • list - 查看在线玩家
+  • status - 查看服务器状态
+  • help - 显示此帮助"""
         
         if is_admin:
             help_msg += """
 
 🔧 管理员命令:
-  • start / 启动 / 开服 - 启动服务器
-  • stop / 关闭 / 关服 - 关闭服务器
-  • restart / 重启 - 重启服务器
-  • cmd <命令> / /<命令> - 执行游戏内命令"""
+  • start - 启动服务器
+  • stop - 关闭服务器
+  • restart - 重启服务器
+  • cmd <命令> - 执行游戏内命令"""
         
         try:
             await napcat_client.send_group_message(settings.qq_group_id, help_msg)
