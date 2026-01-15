@@ -65,11 +65,12 @@ class MessageHandler:
                 at_qq = seg_data.get("qq", "")
                 at_name = seg_data.get("name", "")
                 
-                logger.info(f"Found @mention: qq={at_qq}, name={at_name}")
+                logger.debug(f"Found @mention: qq={at_qq}, name={at_name}")
                 
-                # 检查是否@了机器人（任何@都视为可能的命令）
-                if at_qq and at_qq != "all":
+                # 只有@机器人才触发命令
+                if at_qq and str(at_qq) == str(settings.bot_qq):
                     has_at_bot = True
+                    logger.info(f"Detected @bot mention")
                     
                 if at_qq == "all":
                     text_parts.append("@全体成员")
@@ -203,7 +204,7 @@ class MessageHandler:
             logger.info(f"Combined text: '{combined_text}', has_at_bot: {has_at_bot}")
             
             # 检查是否是命令
-            if has_at_bot and await self._handle_command(combined_text, nickname):
+            if has_at_bot and await self._handle_command(combined_text, nickname, qq):
                 logger.info("Command handled, not forwarding to MC")
                 return  # 命令已处理，不转发到MC
             
@@ -215,7 +216,14 @@ class MessageHandler:
             )
             await message_queue.push(msg)
             
-    async def _handle_command(self, text: str, nickname: str) -> bool:
+    def _is_admin(self, qq: str) -> bool:
+        """检查是否是管理员"""
+        if not settings.admin_qq:
+            return False
+        admin_list = [q.strip() for q in settings.admin_qq.split(",") if q.strip()]
+        return str(qq) in admin_list
+    
+    async def _handle_command(self, text: str, nickname: str, qq: str) -> bool:
         """处理命令，返回True表示已处理"""
         # 清理文本，移除@标记和QQ号
         import re
@@ -229,6 +237,9 @@ class MessageHandler:
             return False
         
         text_lower = text.lower()
+        is_admin = self._is_admin(qq)
+        
+        # ===== 普通用户命令 =====
         
         # list命令：显示在线玩家
         if text_lower in ["list", "列表", "在线", "玩家列表"] or any(cmd in text_lower for cmd in ["list", "列表", "玩家"]):
@@ -237,10 +248,48 @@ class MessageHandler:
             return True
         
         # status命令：显示服务器状态
-        if text_lower in ["status", "状态", "服务器状态", "服务器"]:
+        if text_lower in ["status", "状态", "服务器状态"]:
             logger.info(f"Status command triggered by {nickname}")
             await self._handle_status_command()
             return True
+        
+        # help命令：显示帮助
+        if text_lower in ["help", "帮助", "命令"]:
+            await self._handle_help_command(is_admin)
+            return True
+        
+        # ===== 管理员命令 =====
+        if is_admin:
+            # 重启服务器
+            if text_lower in ["restart", "重启", "重启服务器"]:
+                logger.info(f"Admin {nickname}({qq}) triggered restart")
+                await self._handle_admin_restart()
+                return True
+            
+            # 启动服务器
+            if text_lower in ["start", "启动", "启动服务器", "开服"]:
+                logger.info(f"Admin {nickname}({qq}) triggered start")
+                await self._handle_admin_start()
+                return True
+            
+            # 关闭服务器
+            if text_lower in ["stop", "关闭", "关闭服务器", "关服"]:
+                logger.info(f"Admin {nickname}({qq}) triggered stop")
+                await self._handle_admin_stop()
+                return True
+            
+            # 执行游戏内命令
+            if text_lower.startswith("cmd ") or text_lower.startswith("命令 ") or text_lower.startswith("/"):
+                # 提取命令内容
+                if text_lower.startswith("/"):
+                    game_cmd = text[1:]  # 移除开头的 /
+                else:
+                    game_cmd = text.split(" ", 1)[1] if " " in text else ""
+                
+                if game_cmd:
+                    logger.info(f"Admin {nickname}({qq}) executing command: {game_cmd}")
+                    await self._handle_admin_cmd(game_cmd, nickname)
+                    return True
             
         return False
     
@@ -257,15 +306,21 @@ class MessageHandler:
                 
                 if response.status_code == 200:
                     data = response.json()
-                    online_count = data.get("online_count", 0)
-                    max_players = data.get("max_players", 0)
-                    players = data.get("players", [])
+                    is_stale = data.get("stale", False)
                     
-                    if online_count == 0:
-                        message = "📊 当前服务器无人在线"
+                    # 如果数据已过期，说明服务器可能离线
+                    if is_stale:
+                        message = "🔴 服务器可能已离线（超过30秒无响应）"
                     else:
-                        player_list = "\n".join([f"  • {p}" for p in players])
-                        message = f"📊 在线玩家 ({online_count}/{max_players}):\n{player_list}"
+                        online_count = data.get("online_count", 0)
+                        max_players = data.get("max_players", 0)
+                        players = data.get("players", [])
+                        
+                        if online_count == 0:
+                            message = "📊 当前服务器无人在线"
+                        else:
+                            player_list = "\n".join([f"  • {p}" for p in players])
+                            message = f"📊 在线玩家 ({online_count}/{max_players}):\n{player_list}"
                     
                     # 发送消息，忽略发送过程中的超时等错误（消息可能已经发出）
                     try:
@@ -347,6 +402,195 @@ class MessageHandler:
                 
         except Exception as e:
             logger.error(f"Error handling status command: {e}")
+
+    async def _handle_help_command(self, is_admin: bool):
+        """显示帮助信息"""
+        help_msg = """📖 可用命令:
+  • list / 列表 / 在线 - 查看在线玩家
+  • status / 状态 - 查看服务器状态
+  • help / 帮助 - 显示此帮助"""
+        
+        if is_admin:
+            help_msg += """
+
+🔧 管理员命令:
+  • start / 启动 / 开服 - 启动服务器
+  • stop / 关闭 / 关服 - 关闭服务器
+  • restart / 重启 - 重启服务器
+  • cmd <命令> / /<命令> - 执行游戏内命令"""
+        
+        try:
+            await napcat_client.send_group_message(settings.qq_group_id, help_msg)
+        except Exception:
+            pass
+
+    async def _handle_admin_start(self):
+        """管理员命令：启动服务器"""
+        import asyncio
+        
+        try:
+            await napcat_client.send_group_message(settings.qq_group_id, "🔄 正在启动服务器...")
+        except Exception:
+            pass
+        
+        try:
+            proc = await asyncio.create_subprocess_shell(
+                "systemctl start minecraft",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await proc.communicate()
+            
+            # 等待几秒检查状态
+            await asyncio.sleep(3)
+            
+            check_proc = await asyncio.create_subprocess_shell(
+                "systemctl is-active --quiet minecraft && echo 'ok' || echo 'fail'",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await check_proc.communicate()
+            
+            if stdout.decode().strip() == 'ok':
+                message = "✅ 服务器启动成功！"
+            else:
+                message = "❌ 服务器启动失败，请检查日志"
+            
+            try:
+                await napcat_client.send_group_message(settings.qq_group_id, message)
+            except Exception:
+                pass
+                
+        except Exception as e:
+            logger.error(f"Error starting server: {e}")
+
+    async def _handle_admin_stop(self):
+        """管理员命令：关闭服务器"""
+        import asyncio
+        
+        try:
+            await napcat_client.send_group_message(settings.qq_group_id, "🔄 正在关闭服务器...")
+        except Exception:
+            pass
+        
+        try:
+            proc = await asyncio.create_subprocess_shell(
+                "systemctl stop minecraft",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await proc.communicate()
+            
+            await asyncio.sleep(3)
+            
+            check_proc = await asyncio.create_subprocess_shell(
+                "systemctl is-active --quiet minecraft && echo 'running' || echo 'stopped'",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await check_proc.communicate()
+            
+            if stdout.decode().strip() == 'stopped':
+                message = "✅ 服务器已关闭"
+            else:
+                message = "⚠️ 服务器仍在运行，尝试强制关闭..."
+                # 强制关闭
+                await asyncio.create_subprocess_shell("systemctl kill minecraft")
+            
+            try:
+                await napcat_client.send_group_message(settings.qq_group_id, message)
+            except Exception:
+                pass
+                
+        except Exception as e:
+            logger.error(f"Error stopping server: {e}")
+
+    async def _handle_admin_restart(self):
+        """管理员命令：重启服务器"""
+        import asyncio
+        
+        try:
+            await napcat_client.send_group_message(settings.qq_group_id, "🔄 正在重启服务器...")
+        except Exception:
+            pass
+        
+        try:
+            proc = await asyncio.create_subprocess_shell(
+                "systemctl restart minecraft",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await proc.communicate()
+            
+            await asyncio.sleep(5)
+            
+            check_proc = await asyncio.create_subprocess_shell(
+                "systemctl is-active --quiet minecraft && echo 'ok' || echo 'fail'",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await check_proc.communicate()
+            
+            if stdout.decode().strip() == 'ok':
+                message = "✅ 服务器重启成功！"
+            else:
+                message = "❌ 服务器重启失败，请检查日志"
+            
+            try:
+                await napcat_client.send_group_message(settings.qq_group_id, message)
+            except Exception:
+                pass
+                
+        except Exception as e:
+            logger.error(f"Error restarting server: {e}")
+
+    async def _handle_admin_cmd(self, game_cmd: str, admin_name: str):
+        """管理员命令：执行游戏内命令"""
+        import asyncio
+        
+        screen_name = settings.mc_screen_name
+        
+        try:
+            # 检查screen会话是否存在
+            check_proc = await asyncio.create_subprocess_shell(
+                f"screen -list | grep -q '{screen_name}' && echo 'ok' || echo 'no'",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await check_proc.communicate()
+            
+            if stdout.decode().strip() != 'ok':
+                try:
+                    await napcat_client.send_group_message(settings.qq_group_id, "❌ 服务器未运行或无法连接到控制台")
+                except Exception:
+                    pass
+                return
+            
+            # 发送命令到screen
+            escaped_cmd = game_cmd.replace('"', '\\"').replace("'", "\\'")
+            send_cmd = f"screen -S {screen_name} -X stuff '{escaped_cmd}\n'"
+            
+            proc = await asyncio.create_subprocess_shell(
+                send_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await proc.communicate()
+            
+            message = f"✅ 已执行命令: {game_cmd}"
+            logger.info(f"Admin {admin_name} executed: {game_cmd}")
+            
+            try:
+                await napcat_client.send_group_message(settings.qq_group_id, message)
+            except Exception:
+                pass
+                
+        except Exception as e:
+            logger.error(f"Error executing game command: {e}")
+            try:
+                await napcat_client.send_group_message(settings.qq_group_id, f"❌ 命令执行失败: {str(e)}")
+            except Exception:
+                pass
 
     def _get_face_name(self, face_id: str) -> str:
         """获取 QQ 表情名称"""

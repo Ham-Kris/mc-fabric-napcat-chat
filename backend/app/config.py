@@ -14,6 +14,12 @@ class Settings(BaseSettings):
 
     # QQ 群配置
     qq_group_id: int = 123456789
+    bot_qq: int = 0  # 机器人QQ号，用于检测@机器人
+    admin_qq: str = ""  # 管理员QQ号，多个用逗号分隔，可控制服务器
+    
+    # MC 服务器路径配置
+    mc_server_dir: str = "/www/wwwroot/mc/server"  # MC服务器目录
+    mc_screen_name: str = "mc"  # screen会话名称
 
     # OpenAI API 配置 - 图片描述
     openai_api_key: str = ""
