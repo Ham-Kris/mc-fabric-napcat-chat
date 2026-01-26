@@ -350,44 +350,44 @@ class MessageHandler:
         import asyncio
         
         try:
-            # 检查 minecraft 服务状态
-            check_cmd = "systemctl is-active --quiet minecraft && echo 'running' || echo 'stopped'"
+            # 获取 MC 服务器进程信息（兼容 Forge/Fabric/Paper 等各种服务端）
+            # 查找 Java Minecraft 服务器进程
+            info_cmd = """
+            # 查找包含 minecraftforge 或 user_jvm_args 或 fabric 的 java 进程
+            PID=$(ps aux | grep -E "java.*minecraftforge|java.*user_jvm_args|java.*fabric-server|java.*paper|java.*spigot" | grep -v grep | awk '{print $2}' | head -1)
+            
+            if [ -z "$PID" ]; then
+                # 备用：查找监听 25565 端口的进程
+                PID=$(lsof -i :25565 -t 2>/dev/null | head -1)
+            fi
+            
+            CORES=$(nproc)
+            if [ -n "$PID" ]; then
+                MEM=$(ps -p $PID -o rss= 2>/dev/null | awk '{printf "%.1f", $1/1024/1024}')
+                CPU=$(ps -p $PID -o %cpu= 2>/dev/null | awk -v cores="$CORES" '{printf "%.1f", $1/cores}')
+                UPTIME=$(ps -p $PID -o etime= 2>/dev/null | xargs)
+                echo "running|$MEM|$CPU|$UPTIME"
+            else
+                echo "stopped|||"
+            fi
+            """
             proc = await asyncio.create_subprocess_shell(
-                check_cmd,
+                info_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
             stdout, _ = await proc.communicate()
-            is_running = stdout.decode().strip() == 'running'
+            result = stdout.decode().strip()
             
-            if not is_running:
+            parts = result.split('|')
+            status = parts[0] if len(parts) > 0 else "stopped"
+            
+            if status != "running":
                 message = "🔴 服务器状态: 已停止"
             else:
-                # 获取进程信息
-                info_cmd = """
-                PID=$(pgrep -f "fabric-server-launch.jar" | head -1)
-                CORES=$(nproc)
-                if [ -n "$PID" ]; then
-                    MEM=$(ps -p $PID -o rss= 2>/dev/null | awk '{printf "%.1f", $1/1024/1024}')
-                    CPU=$(ps -p $PID -o %cpu= 2>/dev/null | awk -v cores="$CORES" '{printf "%.1f", $1/cores}')
-                    UPTIME=$(ps -p $PID -o etime= 2>/dev/null | xargs)
-                    echo "$MEM|$CPU|$UPTIME"
-                else
-                    echo "|||"
-                fi
-                """
-                proc = await asyncio.create_subprocess_shell(
-                    info_cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                stdout, _ = await proc.communicate()
-                result = stdout.decode().strip()
-                
-                parts = result.split('|')
-                mem = parts[0] if len(parts) > 0 and parts[0] else "N/A"
-                cpu = parts[1] if len(parts) > 1 and parts[1] else "N/A"
-                uptime = parts[2] if len(parts) > 2 and parts[2] else "N/A"
+                mem = parts[1] if len(parts) > 1 and parts[1] else "N/A"
+                cpu = parts[2] if len(parts) > 2 and parts[2] else "N/A"
+                uptime = parts[3] if len(parts) > 3 and parts[3] else "N/A"
                 
                 message = f"""🟢 服务器状态: 运行中
 💾 内存占用: {mem}G
